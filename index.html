@@ -3,972 +3,723 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NUAING - Warehouse Management System</title>
+    <title>NUAING - WMS</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & React DOM -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        @media print {
-            .no-print { display: none !important; }
-            .print-only { display: block !important; }
-        }
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+      body { font-family: 'Inter', sans-serif; }
+      @media print {
+        body * { visibility: hidden; }
+        #printable-report, #printable-report * { visibility: visible; }
+        #printable-report { position: absolute; left: 0; top: 0; width: 100%; }
+      }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen">
+<body class="bg-slate-50 text-slate-800">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useEffect } = React;
-
-        // Data Awal Fallback (akan tertimpa otomatis jika Google Sheets terhubung)
-        const INITIAL_PRODUCTS = [
-          { id: 'PRD-001', code: 'BCG-01', name: 'BEAUTY CAT GOLD PERSIAN (BAL/15)', category: 'Cat Food', unit: 'BAL', packSize: 15, stock: 112, minStock: 30, price: 285000 },
-          { id: 'PRD-002', code: 'BPC-02', name: 'BEAUTY PREMIUM CAT FOOD (BAL/20)', category: 'Cat Food', unit: 'BAL', packSize: 20, stock: 694, minStock: 100, price: 340000 },
-          { id: 'PRD-003', code: 'BDB-03', name: 'BOLT DOG BEEF BULAT (BAL/20)', category: 'Dog Food', unit: 'BAL', packSize: 20, stock: 54, minStock: 25, price: 260000 },
-          { id: 'PRD-004', code: 'BDS-04', name: 'BOLT DOG BEEF SEGITIGA (BAL/20)', category: 'Dog Food', unit: 'BAL', packSize: 20, stock: 52, minStock: 25, price: 260000 },
-          { id: 'PRD-005', code: 'BDL-05', name: 'BOLT DOG LAMB (BAL/20)', category: 'Dog Food', unit: 'BAL', packSize: 20, stock: 12, minStock: 20, price: 270000 },
-          { id: 'PRD-006', code: 'BTD-06', name: 'BOLT TUNA DONAT FRESHPACK (BAL/20)', category: 'Cat Food', unit: 'BAL', packSize: 20, stock: 170, minStock: 50, price: 265000 },
-          { id: 'PRD-007', code: 'CCA-07', name: 'CAT CHOIZE ADULT SALMON (BAL/20)', category: 'Cat Food', unit: 'BAL', packSize: 20, stock: 138, minStock: 40, price: 255000 },
-          { id: 'PRD-008', code: 'CCT-08', name: 'CAT CHOIZE ADULT TUNA (BAL/20)', category: 'Cat Food', unit: 'BAL', packSize: 20, stock: 151, minStock: 40, price: 255000 },
-          { id: 'PRD-009', code: 'CCKS-09', name: 'CAT CHOIZE KITTEN SALMON (BAL/20)', category: 'Cat Food', unit: 'BAL', packSize: 20, stock: 175, minStock: 40, price: 275000 },
-          { id: 'PRD-010', code: 'CCKT-10', name: 'CAT CHOIZE KITTEN TUNA (BAL/20)', category: 'Cat Food', unit: 'BAL', packSize: 20, stock: 234, minStock: 50, price: 275000 },
-        ];
-
-        const INITIAL_TRANSACTIONS = [
-          { id: 'TRX-101', date: '2026-11-01', type: 'IN', productId: 'PRD-002', productName: 'BEAUTY PREMIUM CAT FOOD (BAL/20)', qty: 50, unit: 'BAL', notes: 'Restock PT Pet Indo', user: 'Admin Gudang' },
-          { id: 'TRX-102', date: '2026-11-02', type: 'OUT', productId: 'PRD-005', productName: 'BOLT DOG LAMB (BAL/20)', qty: 10, unit: 'BAL', notes: 'Penjualan Toko', user: 'Kasir' },
-        ];
+        const { useState, useEffect, useMemo } = React;
 
         function App() {
-          // State Koneksi Google Sheets
-          const [webAppUrl, setWebAppUrl] = useState(() => localStorage.getItem('petshop_gss_url') || '');
-          const [tempUrl, setTempUrl] = useState(webAppUrl);
-          const [isConfigOpen, setIsConfigOpen] = useState(false);
-          const [isSyncing, setIsSyncing] = useState(false);
+            const [webAppUrl, setWebAppUrl] = useState(() => localStorage.getItem("gss_url") || "");
+            const [isConfigOpen, setIsConfigOpen] = useState(false);
+            const [tempUrl, setTempUrl] = useState(webAppUrl);
+            const [syncStatus, setSyncStatus] = useState("idle"); 
 
-          // State Aplikasi
-          const [activeTab, setActiveTab] = useState('dashboard');
-          const [products, setProducts] = useState(() => {
-            const saved = localStorage.getItem('petshop_products');
-            return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-          });
-          const [transactions, setTransactions] = useState(() => {
-            const saved = localStorage.getItem('petshop_transactions');
-            return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
-          });
-          const [toast, setToast] = useState(null);
+            const [activeTab, setActiveTab] = useState("dashboard");
+            
+            const [products, setProducts] = useState([]);
+            const [transactions, setTransactions] = useState([]);
+            const [opnameCounts, setOpnameCounts] = useState({});
+            
+            // Modal States
+            const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+            const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+            const [editingProduct, setEditingProduct] = useState({ id: "", name: "", category: "Cat Food", unit: "BAL", stock: 0, minStock: 10 });
+            
+            const [newProduct, setNewProduct] = useState({ name: "", category: "Cat Food", unit: "BAL", stock: 0, minStock: 10 });
+            const [searchTerm, setSearchTerm] = useState("");
 
-          // Filters State
-          const [searchQuery, setSearchQuery] = useState('');
-          const [selectedCategory, setSelectedCategory] = useState('ALL');
+            const [trxForm, setTrxForm] = useState({ type: "IN", productName: "", qty: 1, partner: "", note: "" });
 
-          // Report Filters State
-          const [reportType, setReportType] = useState('master'); // 'master', 'in', 'out'
-          const [startDate, setStartDate] = useState('2026-11-01');
-          const [endDate, setEndDate] = useState('2026-11-30');
+            const [reportType, setReportType] = useState("master");
+            const [startDate, setStartDate] = useState("2026-11-01");
+            const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
 
-          // Modals
-          const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-          const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-          const [isTrxModalOpen, setIsTrxModalOpen] = useState(false);
-          const [editingProduct, setEditingProduct] = useState(null);
+            const isDateValid = useMemo(() => {
+                if (reportType === 'master') return true;
+                if (!startDate || !endDate) return false;
+                if (startDate > endDate) return false;
+                return true;
+            }, [reportType, startDate, endDate]);
 
-          // Opname Counts
-          const [opnameCounts, setOpnameCounts] = useState(() => {
-            const initialMap = {};
-            products.forEach(p => initialMap[p.id] = p.stock);
-            return initialMap;
-          });
+            useEffect(() => {
+                if (webAppUrl) {
+                    fetchDataFromSheets(webAppUrl);
+                } else {
+                    setIsConfigOpen(true);
+                }
+            }, [webAppUrl]);
 
-          // Form States
-          const [formData, setFormData] = useState({ code: '', name: '', category: 'Cat Food', unit: 'BAL', packSize: 20, stock: 0, minStock: 20, price: 0 });
-          const [trxData, setTrxData] = useState({ type: 'IN', productId: '', qty: 1, notes: '' });
+            const saveConfigUrl = () => {
+                setWebAppUrl(tempUrl);
+                localStorage.setItem("gss_url", tempUrl);
+                setIsConfigOpen(false);
+                if(tempUrl) fetchDataFromSheets(tempUrl);
+            };
 
-          const showToast = (message, type = 'success') => {
-            setToast({ message, type });
-            setTimeout(() => setToast(null), 3500);
-          };
+            const fetchDataFromSheets = async (customUrl = webAppUrl) => {
+                if (!customUrl) return;
+                setSyncStatus("syncing");
+                try {
+                    const res = await fetch(customUrl);
+                    const data = await res.json();
+                    if (data && data.products) setProducts(data.products);
+                    if (data && data.transactions) setTransactions(data.transactions);
+                    setSyncStatus("success");
+                    setTimeout(() => setSyncStatus("idle"), 3000);
+                } catch (err) {
+                    console.error("Gagal sinkronisasi Google Sheets:", err);
+                    setSyncStatus("error");
+                    setTimeout(() => setSyncStatus("idle"), 3000);
+                }
+            };
 
-          // Simpan ke LocalStorage otomatis setiap perubahan
-          useEffect(() => {
-            localStorage.setItem('petshop_products', JSON.stringify(products));
-            localStorage.setItem('petshop_transactions', JSON.stringify(transactions));
-          }, [products, transactions]);
+            const sendDataToSheets = async (action, dataPayload) => {
+                if (!webAppUrl) return;
+                try {
+                    await fetch(webAppUrl, {
+                        method: "POST",
+                        mode: "no-cors",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action, data: dataPayload })
+                    });
+                } catch (err) {
+                    console.error("Gagal mengirim data ke Google Sheets:", err);
+                }
+            };
 
-          // Tarik data dari Google Sheets saat pertama buka jika URL sudah diset
-          useEffect(() => {
-            if (webAppUrl) {
-              syncFromGoogleSheets(webAppUrl, true);
-            }
-          }, []);
+            const handleAddProductSubmit = (e) => {
+                e.preventDefault();
+                if (!newProduct.name) return;
+                const newItem = {
+                    id: "PRD-" + Date.now().toString().slice(-4),
+                    name: newProduct.name.toUpperCase(),
+                    category: newProduct.category,
+                    unit: newProduct.unit,
+                    stock: Number(newProduct.stock),
+                    minStock: Number(newProduct.minStock)
+                };
 
-          // Fungsi Sinkronisasi GET dari Google Sheets
-          const syncFromGoogleSheets = async (urlToUse = webAppUrl, silent = false) => {
-            if (!urlToUse) {
-              if (!silent) showToast('Masukkan URL Web App Google Sheets terlebih dahulu!', 'error');
-              return;
-            }
-            setIsSyncing(true);
-            try {
-              const response = await fetch(urlToUse);
-              const data = await response.json();
-              
-              if (data.products && Array.isArray(data.products) && data.products.length > 0) {
-                const formattedProducts = data.products.map((p, idx) => ({
-                  id: p.id ? String(p.id) : `PRD-${idx + 1}`,
-                  code: p.code || `BRG-${idx + 1}`,
-                  name: p.name || 'Produk Tanpa Nama',
-                  category: p.category || 'Cat Food',
-                  unit: p.unit || 'BAL',
-                  packSize: Number(p.packSize) || 20,
-                  stock: Number(p.stock) || 0,
-                  minStock: Number(p.minStock) || 10,
-                  price: Number(p.price) || 0
-                }));
-                setProducts(formattedProducts);
+                setProducts(prev => [...prev, newItem]);
+                sendDataToSheets("ADD_PRODUCT", newItem);
+                setNewProduct({ name: "", category: "Cat Food", unit: "BAL", stock: 0, minStock: 10 });
+                setIsAddModalOpen(false);
+            };
+
+            // PERBAIKAN UTAMA: Handler Edit Produk
+            const handleOpenEditModal = (product) => {
+                setEditingProduct({ ...product }); // Salin objek agar aman diedit
+                setIsEditModalOpen(true);
+            };
+
+            const handleUpdateProduct = (e) => {
+                e.preventDefault();
+                if (!editingProduct || !editingProduct.id) return;
                 
-                const newOpname = {};
-                formattedProducts.forEach(p => newOpname[p.id] = p.stock);
-                setOpnameCounts(newOpname);
-              }
+                const updatedProducts = products.map(p => p.id === editingProduct.id ? {
+                    ...editingProduct,
+                    name: editingProduct.name.toUpperCase(),
+                    stock: Number(editingProduct.stock),
+                    minStock: Number(editingProduct.minStock)
+                } : p);
 
-              if (data.transactions && Array.isArray(data.transactions)) {
-                const formattedTrx = data.transactions.map((t, idx) => ({
-                  id: t.id ? String(t.id) : `TRX-${idx + 1}`,
-                  date: t.date ? String(t.date).slice(0, 10) : new Date().toISOString().split('T')[0],
-                  type: t.type || 'IN',
-                  productId: t.productId || '',
-                  productName: t.productName || '',
-                  qty: Number(t.qty) || 0,
-                  unit: t.unit || 'BAL',
-                  notes: t.note || t.notes || '-',
-                  user: 'Sheets Sync'
-                }));
-                setTransactions(formattedTrx.reverse());
-              }
-
-              if (!silent) showToast('Data berhasil disinkronkan dari Google Sheets!');
-            } catch (error) {
-              console.error('Sync Error:', error);
-              if (!silent) showToast('Gagal terhubung ke Google Sheets. Pastikan akses diatur ke "Anyone".', 'error');
-            } finally {
-              setIsSyncing(false);
-            }
-          };
-
-          // Fungsi Kirim POST ke Google Sheets
-          const pushToGoogleSheets = async (action, payloadData) => {
-            if (!webAppUrl) return;
-            try {
-              await fetch(webAppUrl, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, data: payloadData })
-              });
-            } catch (error) {
-              console.error('Push Error:', error);
-            }
-          };
-
-          const handleSaveConfig = (e) => {
-            e.preventDefault();
-            setWebAppUrl(tempUrl.trim());
-            localStorage.setItem('petshop_gss_url', tempUrl.trim());
-            setIsConfigOpen(false);
-            if (tempUrl.trim()) {
-              syncFromGoogleSheets(tempUrl.trim());
-            } else {
-              showToast('Koneksi Google Sheets diputus (Mode Offline aktif)', 'info');
-            }
-          };
-
-          const categories = ['Cat Food', 'Dog Food', 'Cat Litter', 'Accessories', 'Burung / Ikan'];
-          const unitOptions = ['BAL', 'DUS', 'SAK', 'PCS'];
-
-          const stats = useMemo(() => {
-            const totalProducts = products.length;
-            const totalStockVal = products.reduce((sum, item) => sum + item.stock, 0);
-            const lowStockItems = products.filter(item => item.stock <= item.minStock);
-            const totalInventoryValue = products.reduce((sum, item) => sum + (item.stock * item.price), 0);
-
-            const categoryBreakdown = products.reduce((acc, item) => {
-              acc[item.category] = (acc[item.category] || 0) + item.stock;
-              return acc;
-            }, {});
-
-            return { totalProducts, totalStockVal, lowStockCount: lowStockItems.length, totalInventoryValue, categoryBreakdown, lowStockItems };
-          }, [products]);
-
-          const filteredProducts = useMemo(() => {
-            return products.filter(item => {
-              const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.code.toLowerCase().includes(searchQuery.toLowerCase());
-              const matchesCat = selectedCategory === 'ALL' || item.category === selectedCategory;
-              return matchesSearch && matchesCat;
-            });
-          }, [products, searchQuery, selectedCategory]);
-
-          const reportData = useMemo(() => {
-            if (reportType === 'master') {
-              return products;
-            } else if (reportType === 'in') {
-              return transactions.filter(t => t.type === 'IN' && t.date >= startDate && t.date <= endDate);
-            } else {
-              return transactions.filter(t => t.type === 'OUT' && t.date >= startDate && t.date <= endDate);
-            }
-          }, [reportType, startDate, endDate, products, transactions]);
-
-          const formatIDR = (val) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
-
-          // Actions
-          const handleCreateProduct = (e) => {
-            e.preventDefault();
-            const initialStock = Number(formData.stock) || 0;
-            const newPrd = { 
-              ...formData, 
-              id: `PRD-${Date.now().toString().slice(-4)}`, 
-              name: formData.name.toUpperCase(),
-              code: formData.code.toUpperCase(),
-              stock: initialStock, 
-              minStock: Number(formData.minStock) || 0, 
-              packSize: Number(formData.packSize) || 1, 
-              price: Number(formData.price) || 0 
-            };
-            
-            setProducts(prev => [newPrd, ...prev]);
-            setOpnameCounts(prev => ({ ...prev, [newPrd.id]: initialStock }));
-            pushToGoogleSheets('ADD_PRODUCT', newPrd);
-            
-            setIsAddModalOpen(false);
-            showToast(`Produk ${newPrd.name} berhasil ditambahkan!`);
-            setFormData({ code: '', name: '', category: 'Cat Food', unit: 'BAL', packSize: 20, stock: 0, minStock: 20, price: 0 });
-          };
-
-          const handleUpdateProduct = (e) => {
-            e.preventDefault();
-            setProducts(prev => prev.map(p => p.id === editingProduct.id ? editingProduct : p));
-            pushToGoogleSheets('UPDATE_PRODUCT', editingProduct);
-            setIsEditModalOpen(false);
-            showToast(`Data produk ${editingProduct.name} berhasil diperbarui!`);
-          };
-
-          const handleDeleteProduct = (id, name) => {
-            setProducts(prev => prev.filter(p => p.id !== id));
-            pushToGoogleSheets('DELETE_PRODUCT', { id, name });
-            showToast(`Produk ${name} telah dihapus.`, 'info');
-          };
-
-          const handleCreateTransaction = (e) => {
-            e.preventDefault();
-            const qtyNum = Number(trxData.qty);
-            const product = products.find(p => p.id === trxData.productId);
-            if (!product || qtyNum <= 0) return;
-
-            if (trxData.type === 'OUT' && product.stock < qtyNum) {
-              showToast(`Stok tidak cukup! Stok tersedia: ${product.stock} ${product.unit}`, 'error');
-              return;
-            }
-
-            const newStock = trxData.type === 'IN' ? product.stock + qtyNum : product.stock - qtyNum;
-            setProducts(prev => prev.map(p => p.id === product.id ? { ...p, stock: newStock } : p));
-            setOpnameCounts(prev => ({ ...prev, [product.id]: newStock }));
-
-            const today = new Date().toISOString().split('T')[0];
-            const newTrx = {
-              id: `TRX-${Math.floor(100 + Math.random() * 900)}`,
-              date: today,
-              type: trxData.type,
-              productId: product.id,
-              productName: product.name,
-              qty: qtyNum,
-              unit: product.unit,
-              partner: trxData.type === 'IN' ? 'Supplier' : 'Pelanggan',
-              note: trxData.notes || (trxData.type === 'IN' ? 'Barang Masuk' : 'Barang Keluar'),
-              notes: trxData.notes || (trxData.type === 'IN' ? 'Barang Masuk' : 'Barang Keluar'),
-              user: 'Admin Gudang'
+                setProducts(updatedProducts);
+                sendDataToSheets("UPDATE_PRODUCT", editingProduct);
+                setIsEditModalOpen(false);
+                setEditingProduct({ id: "", name: "", category: "Cat Food", unit: "BAL", stock: 0, minStock: 10 });
+                alert("Data barang berhasil diperbarui!");
             };
 
-            setTransactions(prev => [newTrx, ...prev]);
-            pushToGoogleSheets('ADD_TRANSACTION', newTrx);
-            setIsTrxModalOpen(false);
-            showToast(`Transaksi ${trxData.type === 'IN' ? 'Masuk' : 'Keluar'} tercatat!`);
-            setTrxData({ type: 'IN', productId: '', qty: 1, notes: '' });
-          };
+            const handleDeleteProduct = (id, name) => {
+                if (confirm(`Yakin ingin menghapus ${name}?`)) {
+                    setProducts(products.filter(p => p.id !== id));
+                    sendDataToSheets("DELETE_PRODUCT", { id });
+                }
+            };
 
-          const handleApplyOpname = () => {
-            const updated = products.map(p => {
-              const phys = opnameCounts[p.id];
-              return phys !== undefined ? { ...p, stock: Number(phys) } : p;
-            });
-            setProducts(updated);
-            showToast('Seluruh stok sistem telah disesuaikan dengan hasil Stock Opname!');
-          };
+            const handleTransactionSubmit = (e) => {
+                e.preventDefault();
+                if (!trxForm.productName || trxForm.qty <= 0) return;
 
-          const exportToCSV = () => {
-            let csvContent = "data:text/csv;charset=utf-8,";
-            if (reportType === 'master') {
-              csvContent += "ID,Kode,Nama Barang,Kategori,Satuan,Stok,Safety Stock,Harga (Rp),Status\n";
-              reportData.forEach(item => {
-                const status = item.stock <= item.minStock ? 'RESTOCK' : 'AMAN';
-                csvContent += `"${item.id}","${item.code}","${item.name}","${item.category}","${item.unit}",${item.stock},${item.minStock},${item.price},"${status}"\n`;
-              });
-            } else {
-              csvContent += "ID Transaksi,Tanggal,Nama Barang,Tipe Mutasi,Qty,Satuan,Keterangan,Petugas\n";
-              reportData.forEach(item => {
-                csvContent += `"${item.id}","${item.date}","${item.productName}","${item.type}",${item.qty},"${item.unit || 'BAL'}","${item.notes}","${item.user}"\n`;
-              });
-            }
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `Laporan_Gudang_${reportType.toUpperCase()}_${new Date().toISOString().split('T')[0]}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            showToast("Laporan berhasil di-export ke Spreadsheet / CSV!");
-          };
+                const qtyNum = Number(trxForm.qty);
+                const newTrx = {
+                    id: `TRX-${Date.now().toString().slice(-4)}`,
+                    date: new Date().toISOString().split('T')[0],
+                    type: trxForm.type,
+                    productName: trxForm.productName,
+                    qty: qtyNum,
+                    unit: products.find(p => p.name === trxForm.productName)?.unit || "BAL",
+                    partner: trxForm.partner || (trxForm.type === 'IN' ? 'Supplier Umum' : 'Pelanggan Umum'),
+                    note: trxForm.note || '-'
+                };
 
-          return (
-            <div className="flex flex-col min-h-screen">
-              
-              {/* Toast */}
-              {toast && (
-                <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium ${
-                  toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 
-                  toast.type === 'info' ? 'bg-blue-50 border-blue-200 text-blue-700' :
-                  'bg-emerald-50 border-emerald-200 text-emerald-700'
-                }`}>
-                  <span>{toast.message}</span>
-                </div>
-              )}
+                const updatedProducts = products.map(p => {
+                    if (p.name === trxForm.productName) {
+                        const newStock = trxForm.type === 'IN' ? Number(p.stock) + qtyNum : Number(p.stock) - qtyNum;
+                        return { ...p, stock: Math.max(0, newStock) };
+                    }
+                    return p;
+                });
 
-              {/* Header */}
-              <header className="bg-slate-900 text-white sticky top-0 z-30 shadow-md no-print">
-                <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-amber-500 text-slate-950 font-bold rounded-lg text-lg">📦</div>
-                    <div>
-                      <h1 className="font-bold text-lg leading-none">PETSHOP WMS</h1>
-                      <span className="text-xs text-slate-400">Sistem Gudang & Stok Opname</span>
-                    </div>
-                  </div>
+                setProducts(updatedProducts);
+                setTransactions(prev => [newTrx, ...prev]);
+                sendDataToSheets("ADD_TRANSACTION", newTrx);
 
-                  {/* Navigasi Utama */}
-                  <nav className="flex flex-wrap gap-1">
-                    {[
-                      { id: 'dashboard', label: 'Dashboard' },
-                      { id: 'inventory', label: 'Master Barang' },
-                      { id: 'transactions', label: 'Transaksi' },
-                      { id: 'opname', label: 'Stock Opname' },
-                      { id: 'reports', label: 'Laporan & Export' }
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                          activeTab === tab.id ? 'bg-amber-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </nav>
+                alert("Transaksi berhasil disimpan dan stok otomatis diperbarui!");
+                setTrxForm({ type: "IN", productName: "", qty: 1, partner: "", note: "" });
+            };
 
-                  {/* Tombol Database Google Sheets & Transaksi */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => { setTempUrl(webAppUrl); setIsConfigOpen(true); }}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg border flex items-center gap-1.5 transition cursor-pointer ${
-                        webAppUrl 
-                          ? 'bg-indigo-950 border-indigo-500 text-indigo-300 hover:bg-indigo-900' 
-                          : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
-                      }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full ${webAppUrl ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></span>
-                      {webAppUrl ? 'Sheets Terhubung' : 'Hubungkan Sheets'}
-                    </button>
+            const filteredTransactions = useMemo(() => {
+                return transactions.filter(t => {
+                    const matchDate = t.date >= startDate && t.date <= endDate;
+                    const matchType = reportType === 'all' || 
+                                      (reportType === 'in' && t.type === 'IN') || 
+                                      (reportType === 'out' && t.type === 'OUT');
+                    return matchDate && (reportType === 'master' || matchType);
+                });
+            }, [transactions, startDate, endDate, reportType]);
 
-                    {webAppUrl && (
-                      <button
-                        onClick={() => syncFromGoogleSheets()}
-                        disabled={isSyncing}
-                        title="Tarik Ulang Data dari Google Sheets"
-                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 cursor-pointer"
-                      >
-                        {isSyncing ? '⏳' : '🔄'}
-                      </button>
+            const exportToCSV = () => {
+                if (!isDateValid) return;
+                let csvContent = "data:text/csv;charset=utf-8,";
+                if (reportType === 'master') {
+                    csvContent += "ID,Nama Barang,Kategori,Satuan,Stok,Min Stok,Status\n";
+                    products.forEach(p => {
+                        const status = Number(p.stock) <= Number(p.minStock) ? "RESTOCK" : "AMAN";
+                        csvContent += `${p.id},"${p.name}",${p.category},${p.unit},${p.stock},${p.minStock},${status}\n`;
+                    });
+                } else {
+                    csvContent += "ID Trx,Tanggal,Tipe,Nama Barang,Qty,Satuan,Pihak Terkait,Keterangan\n";
+                    filteredTransactions.forEach(t => {
+                        csvContent += `${t.id},${t.date},${t.type},"${t.productName}",${t.qty},${t.unit},"${t.partner}","${t.note}"\n`;
+                    });
+                }
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `Laporan_${reportType.toUpperCase()}_${startDate}_to_${endDate}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col bg-slate-50">
+                    <header className="bg-slate-900 text-white shadow-md sticky top-0 z-30">
+                        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-indigo-600 p-2 rounded-lg text-white font-bold">GDS</div>
+                                <div>
+                                    <h1 className="font-bold text-lg leading-tight">Sistem Gudang & Stock Opname</h1>
+                                    <p className="text-xs text-slate-400">Database Connected Google Sheets</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsConfigOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-medium border border-slate-700 transition cursor-pointer">
+                                    <span>{webAppUrl ? "🟢 Terhubung Sheets" : "🔴 Atur URL Sheets"}</span>
+                                </button>
+                                {webAppUrl && (
+                                    <button onClick={() => fetchDataFromSheets()} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-xs font-medium transition cursor-pointer">
+                                        {syncStatus === 'syncing' ? 'Memuat...' : 'Refresh Data'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-950 border-t border-slate-800 px-4">
+                            <div className="max-w-7xl mx-auto flex overflow-x-auto space-x-1 py-2">
+                                {[
+                                    { id: 'dashboard', label: 'Dashboard' },
+                                    { id: 'inventory', label: 'Master Barang' },
+                                    { id: 'transaction', label: 'Transaksi Masuk/Keluar' },
+                                    { id: 'opname', label: 'Stock Opname' },
+                                    { id: 'report', label: 'Laporan & Ekspor' },
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition cursor-pointer ${
+                                            activeTab === tab.id ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6">
+                        {activeTab === 'dashboard' && (
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                                        <p className="text-xs font-medium text-slate-500 uppercase">Total Produk</p>
+                                        <h3 className="text-2xl font-bold text-slate-900 mt-1">{products.length} Item</h3>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                                        <p className="text-xs font-medium text-slate-500 uppercase">Total Stok Fisik</p>
+                                        <h3 className="text-2xl font-bold text-indigo-600 mt-1">{products.reduce((acc, p) => acc + Number(p.stock), 0).toLocaleString()} Unit</h3>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                                        <p className="text-xs font-medium text-slate-500 uppercase">Perlu Restock</p>
+                                        <h3 className="text-2xl font-bold text-rose-600 mt-1">{products.filter(p => Number(p.stock) <= Number(p.minStock)).length} Item</h3>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                                        <p className="text-xs font-medium text-slate-500 uppercase">Total Transaksi</p>
+                                        <h3 className="text-2xl font-bold text-emerald-600 mt-1">{transactions.length} Aktivitas</h3>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'inventory' && (
+                            <div className="space-y-4">
+                                <div className="flex flex-wrap justify-between items-center gap-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Cari nama barang..." 
+                                        value={searchTerm} 
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full sm:w-72 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none"
+                                    />
+                                    <button 
+                                        type="button"
+                                        onClick={() => setIsAddModalOpen(true)} 
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-medium shadow transition cursor-pointer"
+                                    >
+                                        + Barang Baru
+                                    </button>
+                                </div>
+
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-sm text-slate-600">
+                                            <thead className="bg-slate-100 text-slate-700 uppercase text-xs">
+                                                <tr>
+                                                    <th className="p-3.5">ID</th>
+                                                    <th className="p-3.5">Nama Barang</th>
+                                                    <th className="p-3.5">Kategori</th>
+                                                    <th className="p-3.5 text-center">Satuan</th>
+                                                    <th className="p-3.5 text-right">Stok Sistem</th>
+                                                    <th className="p-3.5 text-right">Min Stock</th>
+                                                    <th className="p-3.5 text-center">Status</th>
+                                                    <th className="p-3.5 text-center">Aksi</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase())).map(p => {
+                                                    const isRestock = Number(p.stock) <= Number(p.minStock);
+                                                    return (
+                                                        <tr key={p.id} className="border-b hover:bg-slate-50 transition">
+                                                            <td className="p-3.5 font-mono text-xs">{p.id}</td>
+                                                            <td className="p-3.5 font-semibold text-slate-900">{p.name}</td>
+                                                            <td className="p-3.5">{p.category}</td>
+                                                            <td className="p-3.5 text-center"><span className="px-2 py-0.5 bg-slate-100 rounded text-xs font-medium">{p.unit}</span></td>
+                                                            <td className="p-3.5 text-right font-bold text-slate-800">{Number(p.stock).toLocaleString()}</td>
+                                                            <td className="p-3.5 text-right text-slate-500">{p.minStock}</td>
+                                                            <td className="p-3.5 text-center">
+                                                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${isRestock ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                                    {isRestock ? 'RESTOCK' : 'AMAN'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-3.5 text-center">
+                                                                <div className="flex items-center justify-center gap-2">
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => handleOpenEditModal(p)} 
+                                                                        className="text-indigo-600 hover:underline text-xs font-medium cursor-pointer bg-indigo-50 px-2.5 py-1 rounded-lg"
+                                                                    >
+                                                                        Edit
+                                                                    </button>
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => handleDeleteProduct(p.id, p.name)} 
+                                                                        className="text-rose-600 hover:underline text-xs font-medium cursor-pointer bg-rose-50 px-2.5 py-1 rounded-lg"
+                                                                    >
+                                                                        Hapus
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                {products.length === 0 && (
+                                                    <tr><td colSpan="8" className="p-8 text-center text-slate-400">Belum ada data barang. Silakan atur URL Google Sheets atau tambahkan barang baru.</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'transaction' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 lg:col-span-1 h-fit">
+                                    <h3 className="text-lg font-bold text-slate-800 mb-4">Input Mutasi Barang</h3>
+                                    <form onSubmit={handleTransactionSubmit} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Jenis Transaksi</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button type="button" onClick={() => setTrxForm({...trxForm, type: 'IN'})} className={`py-2 rounded-xl text-sm font-bold border cursor-pointer ${trxForm.type === 'IN' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 text-slate-600'}`}>Masuk</button>
+                                                <button type="button" onClick={() => setTrxForm({...trxForm, type: 'OUT'})} className={`py-2 rounded-xl text-sm font-bold border cursor-pointer ${trxForm.type === 'OUT' ? 'bg-rose-600 text-white border-rose-600' : 'bg-slate-50 text-slate-600'}`}>Keluar</button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Pilih Barang</label>
+                                            <select value={trxForm.productName} onChange={(e) => setTrxForm({...trxForm, productName: e.target.value})} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                                <option value="">-- Pilih Barang --</option>
+                                                {products.map(p => (
+                                                    <option key={p.id} value={p.name}>{p.name} (Stok: {p.stock} {p.unit})</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Jumlah (Qty)</label>
+                                            <input type="number" min="1" value={trxForm.qty} onChange={(e) => setTrxForm({...trxForm, qty: e.target.value})} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Pihak Terkait</label>
+                                            <input type="text" value={trxForm.partner} onChange={(e) => setTrxForm({...trxForm, partner: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                        </div>
+                                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-semibold shadow cursor-pointer">Simpan Transaksi</button>
+                                    </form>
+                                </div>
+
+                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 lg:col-span-2">
+                                    <h3 className="text-lg font-bold text-slate-800 mb-4">Riwayat Transaksi</h3>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-sm text-slate-600">
+                                            <thead className="bg-slate-100 uppercase text-xs text-slate-700">
+                                                <tr>
+                                                    <th className="p-3">Tanggal</th>
+                                                    <th className="p-3">Tipe</th>
+                                                    <th className="p-3">Nama Barang</th>
+                                                    <th className="p-3 text-right">Qty</th>
+                                                    <th className="p-3">Pihak Terkait</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {transactions.map(t => (
+                                                    <tr key={t.id} className="border-b hover:bg-slate-50">
+                                                        <td className="p-3 text-xs">{t.date}</td>
+                                                        <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs font-bold ${t.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{t.type}</span></td>
+                                                        <td className="p-3 font-semibold">{t.productName}</td>
+                                                        <td className="p-3 text-right font-bold">{t.qty} {t.unit}</td>
+                                                        <td className="p-3 text-slate-500">{t.partner}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'opname' && (
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                                <h3 className="text-lg font-bold text-slate-800">Stock Opname Fisik</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm text-slate-600">
+                                        <thead className="bg-slate-100 uppercase text-xs text-slate-700">
+                                            <tr>
+                                                <th className="p-3">Nama Barang</th>
+                                                <th className="p-3">Kategori</th>
+                                                <th className="p-3 text-center">Satuan</th>
+                                                <th className="p-3 text-right">Stok Sistem</th>
+                                                <th className="p-3 text-right">Stok Fisik Opname</th>
+                                                <th className="p-3 text-right">Selisih</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {products.map(p => {
+                                                const physical = opnameCounts[p.id] !== undefined ? Number(opnameCounts[p.id]) : Number(p.stock);
+                                                const diff = physical - Number(p.stock);
+                                                return (
+                                                    <tr key={p.id} className="border-b hover:bg-slate-50">
+                                                        <td className="p-3 font-semibold">{p.name}</td>
+                                                        <td className="p-3">{p.category}</td>
+                                                        <td className="p-3 text-center">{p.unit}</td>
+                                                        <td className="p-3 text-right font-bold">{p.stock}</td>
+                                                        <td className="p-3 text-right">
+                                                            <input type="number" value={opnameCounts[p.id] !== undefined ? opnameCounts[p.id] : p.stock} onChange={(e) => setOpnameCounts({...opnameCounts, [p.id]: e.target.value})} className="w-24 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-right text-sm font-bold" />
+                                                        </td>
+                                                        <td className={`p-3 text-right font-bold ${diff === 0 ? 'text-slate-500' : diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{diff > 0 ? `+${diff}` : diff}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'report' && (
+                            <div className="space-y-6">
+                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                                    <h3 className="text-lg font-bold text-slate-800">Modul Laporan & Filter Tanggal</h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Jenis Laporan</label>
+                                            <select value={reportType} onChange={(e) => setReportType(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                                <option value="master">Master Stok Barang</option>
+                                                <option value="in">Transaksi Barang Masuk</option>
+                                                <option value="out">Transaksi Barang Keluar</option>
+                                                <option value="all">Semua Transaksi</option>
+                                            </select>
+                                        </div>
+                                        {reportType !== 'master' && (
+                                            <>
+                                                <div>
+                                                    <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Tanggal Awal</label>
+                                                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Tanggal Akhir</label>
+                                                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {!isDateValid && reportType !== 'master' && (
+                                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                                            ⚠️ Mohon lengkapi Tanggal Awal & Tanggal Akhir dengan benar agar tombol download/cetak aktif.
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-wrap gap-3 pt-2">
+                                        <button 
+                                            onClick={exportToCSV} 
+                                            disabled={!isDateValid}
+                                            className={`px-4 py-2.5 rounded-xl text-sm font-semibold shadow transition ${
+                                                isDateValid ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                            }`}
+                                        >
+                                            📥 Download Spreadsheet (CSV)
+                                        </button>
+                                        <button 
+                                            onClick={() => window.print()} 
+                                            disabled={!isDateValid}
+                                            className={`px-4 py-2.5 rounded-xl text-sm font-semibold shadow transition ${
+                                                isDateValid ? 'bg-slate-800 hover:bg-slate-900 text-white cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                            }`}
+                                        >
+                                            🖨️ Print / Save PDF
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div id="printable-report" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                                    <div className="border-b pb-4">
+                                        <h2 className="text-xl font-bold text-slate-900 uppercase">
+                                            Laporan {reportType === 'master' ? 'Master Stok Barang' : reportType === 'in' ? 'Barang Masuk' : reportType === 'out' ? 'Barang Keluar' : 'Semua Transaksi'}
+                                        </h2>
+                                        {reportType !== 'master' && (
+                                            <p className="text-xs text-slate-500 mt-1">Periode: {startDate} s/d {endDate}</p>
+                                        )}
+                                    </div>
+
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-sm text-slate-600">
+                                            {reportType === 'master' ? (
+                                                <>
+                                                    <thead className="bg-slate-100 uppercase text-xs text-slate-700">
+                                                        <tr>
+                                                            <th className="p-3">ID</th>
+                                                            <th className="p-3">Nama Barang</th>
+                                                            <th className="p-3">Kategori</th>
+                                                            <th className="p-3 text-center">Satuan</th>
+                                                            <th className="p-3 text-right">Stok</th>
+                                                            <th className="p-3 text-right">Min Stok</th>
+                                                            <th className="p-3 text-center">Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {products.map(p => (
+                                                            <tr key={p.id} className="border-b">
+                                                                <td className="p-3 font-mono text-xs">{p.id}</td>
+                                                                <td className="p-3 font-semibold">{p.name}</td>
+                                                                <td className="p-3">{p.category}</td>
+                                                                <td className="p-3 text-center">{p.unit}</td>
+                                                                <td className="p-3 text-right font-bold">{p.stock}</td>
+                                                                <td className="p-3 text-right">{p.minStock}</td>
+                                                                <td className="p-3 text-center font-bold text-xs">{Number(p.stock) <= Number(p.minStock) ? 'RESTOCK' : 'AMAN'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <thead className="bg-slate-100 uppercase text-xs text-slate-700">
+                                                        <tr>
+                                                            <th className="p-3">ID Trx</th>
+                                                            <th className="p-3">Tanggal</th>
+                                                            <th className="p-3">Tipe</th>
+                                                            <th className="p-3">Nama Barang</th>
+                                                            <th className="p-3 text-right">Qty</th>
+                                                            <th className="p-3">Pihak Terkait</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {filteredTransactions.map(t => (
+                                                            <tr key={t.id} className="border-b">
+                                                                <td className="p-3 font-mono text-xs">{t.id}</td>
+                                                                <td className="p-3">{t.date}</td>
+                                                                <td className="p-3 font-bold">{t.type}</td>
+                                                                <td className="p-3 font-semibold">{t.productName}</td>
+                                                                <td className="p-3 text-right font-bold">{t.qty} {t.unit}</td>
+                                                                <td className="p-3">{t.partner}</td>
+                                                            </tr>
+                                                        ))}
+                                                        {filteredTransactions.length === 0 && (
+                                                            <tr><td colSpan="6" className="p-6 text-center text-slate-400">Tidak ada data transaksi pada rentang tanggal tersebut.</td></tr>
+                                                        )}
+                                                    </tbody>
+                                                </>
+                                            )}
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* MODAL CONFIG */}
+                    {isConfigOpen && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+                                <h3 className="font-bold text-lg text-slate-800">Pengaturan Google Sheets</h3>
+                                <p className="text-xs text-slate-500">Masukkan URL Web App Google Apps Script Anda agar data tampil murni dari spreadsheet.</p>
+                                <input type="url" placeholder="https://script.google.com/macros/s/.../exec" value={tempUrl} onChange={(e) => setTempUrl(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                <div className="flex justify-end pt-2">
+                                    <button type="button" onClick={saveConfigUrl} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-xl font-semibold cursor-pointer">Simpan & Muat</button>
+                                </div>
+                            </div>
+                        </div>
                     )}
 
-                    <button
-                      onClick={() => setIsTrxModalOpen(true)}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg cursor-pointer shadow"
-                    >
-                      + Transaksi
-                    </button>
-                  </div>
-                </div>
-              </header>
-
-              {/* Main Content */}
-              <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6">
-
-                {/* TAB 1: DASHBOARD */}
-                {activeTab === 'dashboard' && (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                        <p className="text-xs text-slate-500 font-semibold uppercase">Total Barang (SKU)</p>
-                        <h3 className="text-2xl font-bold mt-1">{stats.totalProducts} Item</h3>
-                      </div>
-                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                        <p className="text-xs text-slate-500 font-semibold uppercase">Total Volume Stok</p>
-                        <h3 className="text-2xl font-bold mt-1">{stats.totalStockVal.toLocaleString('id-ID')} Unit</h3>
-                      </div>
-                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                        <p className="text-xs text-slate-500 font-semibold uppercase">Stok Kritis / Restock</p>
-                        <h3 className="text-2xl font-bold text-amber-600 mt-1">{stats.lowStockCount} Item</h3>
-                      </div>
-                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                        <p className="text-xs text-slate-500 font-semibold uppercase">Nilai Inventaris (Est.)</p>
-                        <h3 className="text-xl font-bold text-slate-900 mt-1">{formatIDR(stats.totalInventoryValue)}</h3>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                        <h3 className="font-bold text-slate-900 mb-4">Ringkasan Stok per Kategori</h3>
-                        <div className="space-y-3">
-                          {Object.entries(stats.categoryBreakdown).map(([cat, val]) => (
-                            <div key={cat} className="space-y-1">
-                              <div className="flex justify-between text-xs font-semibold">
-                                <span>{cat}</span>
-                                <span>{val.toLocaleString('id-ID')} Unit</span>
-                              </div>
-                              <div className="w-full bg-slate-100 rounded-full h-2.5">
-                                <div className="bg-amber-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (val / (stats.totalStockVal || 1)) * 100)}%` }}></div>
-                              </div>
+                    {/* MODAL TAMBAH BARANG BARU */}
+                    {isAddModalOpen && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+                                <h3 className="font-bold text-lg text-slate-800">Tambah Barang Baru</h3>
+                                <form onSubmit={handleAddProductSubmit} className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Nama Barang</label>
+                                        <input type="text" placeholder="Contoh: CAT CHOIZE ADULT" value={newProduct.name} onChange={(e) => setNewProduct({...newProduct, name: e.target.value})} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Kategori</label>
+                                            <select value={newProduct.category} onChange={(e) => setNewProduct({...newProduct, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                                <option value="Cat Food">Cat Food</option>
+                                                <option value="Dog Food">Dog Food</option>
+                                                <option value="Accessories">Accessories</option>
+                                                <option value="Pakan Burung">Pakan Burung</option>
+                                                <option value="Pasir">Pasir</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Satuan</label>
+                                            <select value={newProduct.unit} onChange={(e) => setNewProduct({...newProduct, unit: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                                <option value="BAL">BAL</option>
+                                                <option value="DUS">DUS</option>
+                                                <option value="SAK">SAK</option>
+                                                <option value="PCS">PCS</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Stok Awal</label>
+                                            <input type="number" min="0" value={newProduct.stock} onChange={(e) => setNewProduct({...newProduct, stock: e.target.value})} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Min Stok</label>
+                                            <input type="number" min="0" value={newProduct.minStock} onChange={(e) => setNewProduct({...newProduct, minStock: e.target.value})} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 pt-2">
+                                        <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer">Batal</button>
+                                        <button type="submit" className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow cursor-pointer">Simpan Barang</button>
+                                    </div>
+                                </form>
                             </div>
-                          ))}
                         </div>
-                      </div>
+                    )}
 
-                      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                        <h3 className="font-bold text-slate-900 mb-4">Peringatan Stok Menipis (Safety Stock)</h3>
-                        <div className="space-y-2 max-h-60 overflow-y-auto">
-                          {stats.lowStockItems.length === 0 ? (
-                            <p className="text-xs text-slate-400 py-4 text-center">Semua stok barang aman di atas batas minimum.</p>
-                          ) : (
-                            stats.lowStockItems.map(item => (
-                              <div key={item.id} className="flex justify-between items-center p-2.5 bg-amber-50/70 border border-amber-200 rounded-lg text-xs">
-                                <div>
-                                  <p className="font-bold text-slate-900">{item.name}</p>
-                                  <p className="text-[11px] text-slate-500">Min: {item.minStock} {item.unit}</p>
-                                </div>
-                                <span className="px-2.5 py-1 bg-red-100 text-red-700 font-bold rounded-md">
-                                  Sisa {item.stock} {item.unit}
-                                </span>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 2: INVENTORY */}
-                {activeTab === 'inventory' && (
-                  <div className="space-y-4">
-                    <div className="flex flex-col sm:flex-row justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder="Cari kode/nama barang..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="px-3 py-1.5 text-xs border rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                        />
-                        <select
-                          value={selectedCategory}
-                          onChange={(e) => setSelectedCategory(e.target.value)}
-                          className="px-3 py-1.5 text-xs border rounded-lg focus:outline-none"
-                        >
-                          <option value="ALL">Semua Kategori</option>
-                          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          setFormData({ code: '', name: '', category: 'Cat Food', unit: 'BAL', packSize: 20, stock: 0, minStock: 20, price: 0 });
-                          setIsAddModalOpen(true);
-                        }} 
-                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-sm"
-                      >
-                        + Barang Baru
-                      </button>
-                    </div>
-
-                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-900 text-slate-200 font-semibold uppercase">
-                            <tr>
-                              <th className="p-3">Kode</th>
-                              <th className="p-3">Nama Barang</th>
-                              <th className="p-3">Kategori</th>
-                              <th className="p-3 text-right">Harga Satuan</th>
-                              <th className="p-3 text-right">Stok Fisik</th>
-                              <th className="p-3 text-center">Status</th>
-                              <th className="p-3 text-center">Aksi</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-medium">
-                            {filteredProducts.map((p) => (
-                              <tr key={p.id} className="hover:bg-slate-50">
-                                <td className="p-3 font-mono font-bold text-slate-500">{p.code}</td>
-                                <td className="p-3 font-bold text-slate-900">{p.name}</td>
-                                <td className="p-3"><span className="px-2 py-0.5 bg-slate-100 rounded">{p.category}</span></td>
-                                <td className="p-3 text-right font-semibold">{formatIDR(p.price)}</td>
-                                <td className="p-3 text-right font-bold font-mono">{p.stock} {p.unit}</td>
-                                <td className="p-3 text-center">
-                                  {p.stock <= p.minStock ? (
-                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-bold text-[10px]">RESTOCK</span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[10px]">AMAN</span>
-                                  )}
-                                </td>
-                                <td className="p-3 text-center space-x-2">
-                                  <button 
-                                    type="button" 
-                                    onClick={() => { 
-                                      setEditingProduct({...p}); 
-                                      setIsEditModalOpen(true); 
-                                    }} 
-                                    className="text-indigo-600 hover:text-indigo-800 font-bold px-2 py-1 bg-indigo-50 rounded cursor-pointer"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button 
-                                    type="button" 
-                                    onClick={() => handleDeleteProduct(p.id, p.name)} 
-                                    className="text-red-600 hover:text-red-800 font-bold px-2 py-1 bg-red-50 rounded cursor-pointer"
-                                  >
-                                    Hapus
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 3: TRANSACTIONS */}
-                {activeTab === 'transactions' && (
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-900 text-slate-200 font-semibold uppercase">
-                          <tr>
-                            <th className="p-3">ID Mutasi</th>
-                            <th className="p-3">Tanggal</th>
-                            <th className="p-3 text-center">Jenis</th>
-                            <th className="p-3">Nama Barang</th>
-                            <th className="p-3 text-right">Qty</th>
-                            <th className="p-3">Keterangan</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
-                          {transactions.map(t => (
-                            <tr key={t.id} className="hover:bg-slate-50">
-                              <td className="p-3 font-mono text-slate-500">{t.id}</td>
-                              <td className="p-3 font-mono">{t.date}</td>
-                              <td className="p-3 text-center">
-                                <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${t.type === 'IN' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                                  {t.type === 'IN' ? 'MASUK (IN)' : 'KELUAR (OUT)'}
-                                </span>
-                              </td>
-                              <td className="p-3 font-bold">{t.productName}</td>
-                              <td className="p-3 text-right font-bold font-mono">{t.qty} {t.unit || 'BAL'}</td>
-                              <td className="p-3 text-slate-500">{t.notes}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 4: OPNAME */}
-                {activeTab === 'opname' && (
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-4 space-y-4">
-                    <div className="flex flex-wrap justify-between items-center gap-3 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                      <p className="text-xs text-amber-900 font-medium">Input stok fisik aktual pada kolom di bawah ini untuk menghitung selisih opname secara otomatis.</p>
-                      <button
-                        type="button"
-                        onClick={handleApplyOpname}
-                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs rounded-lg cursor-pointer shadow-sm"
-                      >
-                        Terapkan Hasil Opname ke Stok Sistem
-                      </button>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-900 text-slate-200 font-semibold uppercase">
-                          <tr>
-                            <th className="p-3">Nama Barang</th>
-                            <th className="p-3 text-center">Satuan</th>
-                            <th className="p-3 text-right">Stok Sistem</th>
-                            <th className="p-3 text-center">Stok Fisik</th>
-                            <th className="p-3 text-right">Selisih</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {products.map(p => {
-                            const phys = opnameCounts[p.id] ?? p.stock;
-                            const diff = Number(phys) - p.stock;
-                            return (
-                              <tr key={p.id}>
-                                <td className="p-3 font-bold">{p.name}</td>
-                                <td className="p-3 text-center font-mono text-slate-500">{p.unit}</td>
-                                <td className="p-3 text-right font-mono font-bold">{p.stock} {p.unit}</td>
-                                <td className="p-3 text-center">
-                                  <input
-                                    type="number"
-                                    value={phys}
-                                    onChange={e => setOpnameCounts({ ...opnameCounts, [p.id]: e.target.value })}
-                                    className="w-20 text-center border rounded py-1 font-bold text-xs focus:ring-2 focus:ring-amber-500"
-                                  />
-                                </td>
-                                <td className="p-3 text-right font-mono font-bold">
-                                  {diff === 0 ? <span className="text-slate-400">0</span> : diff > 0 ? <span className="text-emerald-600">+{diff}</span> : <span className="text-red-600">{diff}</span>}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 5: REPORTS & EXPORT */}
-                {activeTab === 'reports' && (
-                  <div className="space-y-6">
-                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 no-print">
-                      <h3 className="font-bold text-slate-900 text-base">Filter & Pengaturan Laporan Gudang</h3>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Jenis Laporan</label>
-                          <select
-                            value={reportType}
-                            onChange={(e) => setReportType(e.target.value)}
-                            className="w-full p-2 border rounded-lg text-xs font-medium"
-                          >
-                            <option value="master">Master / Rekap Stok Barang</option>
-                            <option value="in">Transaksi Barang Masuk (IN)</option>
-                            <option value="out">Transaksi Barang Keluar (OUT)</option>
-                          </select>
-                        </div>
-
-                        {reportType !== 'master' && (
-                          <>
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-600 mb-1">Tanggal Awal</label>
-                              <input
-                                type="date"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                                className="w-full p-2 border rounded-lg text-xs font-medium"
-                              />
+                    {/* MODAL EDIT BARANG */}
+                    {isEditModalOpen && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+                                <h3 className="font-bold text-lg text-slate-800">Edit Data Barang</h3>
+                                <form onSubmit={handleUpdateProduct} className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Nama Barang</label>
+                                        <input type="text" value={editingProduct.name} onChange={(e) => setEditingProduct({...editingProduct, name: e.target.value})} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Kategori</label>
+                                            <select value={editingProduct.category} onChange={(e) => setEditingProduct({...editingProduct, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                                <option value="Cat Food">Cat Food</option>
+                                                <option value="Dog Food">Dog Food</option>
+                                                <option value="Accessories">Accessories</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Satuan</label>
+                                            <select value={editingProduct.unit} onChange={(e) => setEditingProduct({...editingProduct, unit: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                                <option value="BAL">BAL</option>
+                                                <option value="DUS">DUS</option>
+                                                <option value="SAK">SAK</option>
+                                                <option value="PCS">PCS</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Stok Sistem</label>
+                                            <input type="number" min="0" value={editingProduct.stock} onChange={(e) => setEditingProduct({...editingProduct, stock: e.target.value})} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Min Stok</label>
+                                            <input type="number" min="0" value={editingProduct.minStock} onChange={(e) => setEditingProduct({...editingProduct, minStock: e.target.value})} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 pt-2">
+                                        <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer">Batal</button>
+                                        <button type="submit" className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow cursor-pointer">Simpan Perubahan</button>
+                                    </div>
+                                </form>
                             </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-600 mb-1">Tanggal Akhir</label>
-                              <input
-                                type="date"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                className="w-full p-2 border rounded-lg text-xs font-medium"
-                              />
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="flex gap-2 pt-2 border-t">
-                        <button
-                          type="button"
-                          onClick={exportToCSV}
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
-                        >
-                          Export to Excel (.csv)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => window.print()}
-                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs rounded-lg transition-colors cursor-pointer"
-                        >
-                          Cetak / Save PDF
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                      <div className="p-3 bg-slate-900 text-slate-200 font-bold text-xs flex justify-between items-center">
-                        <span>PREVIEW LAPORAN: {reportType.toUpperCase()}</span>
-                        <span>{reportData.length} Item Data</span>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-100 text-slate-700 font-semibold uppercase">
-                            <tr>
-                              {reportType === 'master' ? (
-                                <>
-                                  <th className="p-3">Kode</th>
-                                  <th className="p-3">Nama Barang</th>
-                                  <th className="p-3">Kategori</th>
-                                  <th className="p-3 text-right">Stok</th>
-                                  <th className="p-3 text-right">Safety Stock</th>
-                                  <th className="p-3 text-center">Status</th>
-                                </>
-                              ) : (
-                                <>
-                                  <th className="p-3">ID Mutasi</th>
-                                  <th className="p-3">Tanggal</th>
-                                  <th className="p-3">Nama Barang</th>
-                                  <th className="p-3 text-right">Qty</th>
-                                  <th className="p-3">Keterangan</th>
-                                </>
-                              )}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-medium">
-                            {reportData.map((item, i) => (
-                              <tr key={i}>
-                                {reportType === 'master' ? (
-                                  <>
-                                    <td className="p-3 font-mono">{item.code}</td>
-                                    <td className="p-3 font-bold">{item.name}</td>
-                                    <td className="p-3">{item.category}</td>
-                                    <td className="p-3 text-right font-mono font-bold">{item.stock} {item.unit}</td>
-                                    <td className="p-3 text-right font-mono text-slate-500">{item.minStock} {item.unit}</td>
-                                    <td className="p-3 text-center">
-                                      <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${item.stock <= item.minStock ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                                        {item.stock <= item.minStock ? 'RESTOCK' : 'AMAN'}
-                                      </span>
-                                    </td>
-                                  </>
-                                ) : (
-                                  <>
-                                    <td className="p-3 font-mono">{item.id}</td>
-                                    <td className="p-3 font-mono">{item.date}</td>
-                                    <td className="p-3 font-bold">{item.productName}</td>
-                                    <td className="p-3 text-right font-mono font-bold">{item.qty} {item.unit || 'BAL'}</td>
-                                    <td className="p-3 text-slate-500">{item.notes}</td>
-                                  </>
-                                )}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-              </main>
-
-              {/* MODAL CONFIG GOOGLE SHEETS */}
-              {isConfigOpen && (
-                <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-xl max-w-md w-full p-5 space-y-4 shadow-xl">
-                    <div className="flex justify-between items-center border-b pb-2">
-                      <h3 className="font-bold text-base text-slate-900">Hubungkan Database Google Sheets</h3>
-                      <button type="button" onClick={() => setIsConfigOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                    </div>
-                    <form onSubmit={handleSaveConfig} className="space-y-3 text-xs">
-                      <p className="text-slate-500 leading-relaxed">
-                        Tempelkan <strong>URL Web App</strong> dari Google Apps Script Anda (berakhiran <code className="bg-slate-100 px-1 rounded">/exec</code>). Data akan tersimpan otomatis ke spreadsheet setiap Anda menambah barang atau transaksi.
-                      </p>
-                      <div>
-                        <label className="block font-semibold mb-1">URL Web App Google Apps Script</label>
-                        <input 
-                          type="url" 
-                          value={tempUrl} 
-                          onChange={e => setTempUrl(e.target.value)} 
-                          className="w-full p-2.5 border rounded-lg font-mono text-xs focus:ring-2 focus:ring-indigo-500" 
-                          placeholder="https://script.google.com/macros/s/.../exec" 
-                        />
-                      </div>
-                      <div className="flex justify-end gap-2 pt-3 border-t">
-                        <button type="button" onClick={() => setIsConfigOpen(false)} className="px-3 py-1.5 border rounded-lg hover:bg-slate-100">Batal</button>
-                        <button type="submit" className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow">Simpan & Sinkronkan</button>
-                      </div>
-                    </form>
-                  </div>
+                        </div>
+                    )}
                 </div>
-              )}
-
-              {/* Modal Tambah Barang */}
-              {isAddModalOpen && (
-                <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-xl max-w-md w-full p-5 space-y-4">
-                    <div className="flex justify-between items-center border-b pb-2">
-                      <h3 className="font-bold text-base text-slate-900">Tambah Barang Baru</h3>
-                      <button type="button" onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                    </div>
-                    <form onSubmit={handleCreateProduct} className="space-y-3 text-xs">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block font-semibold mb-1">Kode Barang</label>
-                          <input type="text" required value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} className="w-full p-2 border rounded font-mono uppercase" placeholder="BCG-01" />
-                        </div>
-                        <div>
-                          <label className="block font-semibold mb-1">Kategori</label>
-                          <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full p-2 border rounded">
-                            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block font-semibold mb-1">Nama Barang</label>
-                        <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full p-2 border rounded uppercase" placeholder="BEAUTY CAT GOLD PERSIAN (DUS/15)" />
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <label className="block font-semibold mb-1">Satuan</label>
-                          <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value })} className="w-full p-2 border rounded font-bold">
-                            {unitOptions.map(u => <option key={u} value={u}>{u}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block font-semibold mb-1">Stok Awal</label>
-                          <input type="number" min="0" value={formData.stock} onChange={e => setFormData({ ...formData, stock: e.target.value })} className="w-full p-2 border rounded font-bold" />
-                        </div>
-                        <div>
-                          <label className="block font-semibold mb-1">Safety Stock</label>
-                          <input type="number" min="0" value={formData.minStock} onChange={e => setFormData({ ...formData, minStock: e.target.value })} className="w-full p-2 border rounded" />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block font-semibold mb-1">Harga per Satuan (Rp)</label>
-                        <input type="number" min="0" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} className="w-full p-2 border rounded font-mono" />
-                      </div>
-                      <div className="flex justify-end gap-2 pt-3 border-t">
-                        <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-3 py-1.5 border rounded hover:bg-slate-100">Batal</button>
-                        <button type="submit" className="px-4 py-1.5 bg-slate-900 text-amber-400 font-bold rounded hover:bg-slate-800">Simpan Barang</button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
-
-              {/* Modal Edit Barang */}
-              {isEditModalOpen && editingProduct && (
-                <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-xl max-w-md w-full p-5 space-y-4">
-                    <div className="flex justify-between items-center border-b pb-2">
-                      <h3 className="font-bold text-base text-slate-900">Edit Data Barang</h3>
-                      <button type="button" onClick={() => setIsEditModalOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                    </div>
-                    <form onSubmit={handleUpdateProduct} className="space-y-3 text-xs">
-                      <div>
-                        <label className="block font-semibold mb-1">Nama Barang</label>
-                        <input type="text" required value={editingProduct.name} onChange={e => setEditingProduct({ ...editingProduct, name: e.target.value.toUpperCase() })} className="w-full p-2 border rounded uppercase" />
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <label className="block font-semibold mb-1">Kategori</label>
-                          <select value={editingProduct.category} onChange={e => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full p-2 border rounded">
-                            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block font-semibold mb-1">Satuan</label>
-                          <select value={editingProduct.unit || 'BAL'} onChange={e => setEditingProduct({ ...editingProduct, unit: e.target.value })} className="w-full p-2 border rounded font-bold">
-                            {unitOptions.map(u => <option key={u} value={u}>{u}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block font-semibold mb-1">Safety Stock</label>
-                          <input type="number" min="0" value={editingProduct.minStock} onChange={e => setEditingProduct({ ...editingProduct, minStock: Number(e.target.value) })} className="w-full p-2 border rounded" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block font-semibold mb-1">Stok Saat Ini</label>
-                          <input type="number" min="0" value={editingProduct.stock} onChange={e => setEditingProduct({ ...editingProduct, stock: Number(e.target.value) })} className="w-full p-2 border rounded font-bold" />
-                        </div>
-                        <div>
-                          <label className="block font-semibold mb-1">Harga per Satuan (Rp)</label>
-                          <input type="number" min="0" value={editingProduct.price} onChange={e => setEditingProduct({ ...editingProduct, price: Number(e.target.value) })} className="w-full p-2 border rounded font-mono" />
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-2 pt-3 border-t">
-                        <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-3 py-1.5 border rounded hover:bg-slate-100">Batal</button>
-                        <button type="submit" className="px-4 py-1.5 bg-slate-900 text-amber-400 font-bold rounded hover:bg-slate-800">Perbarui Data</button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
-
-              {/* Transaction Modal */}
-              {isTrxModalOpen && (
-                <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-xl max-w-md w-full p-5 space-y-4">
-                    <div className="flex justify-between items-center border-b pb-2">
-                      <h3 className="font-bold text-base">Input Transaksi Masuk / Keluar</h3>
-                      <button type="button" onClick={() => setIsTrxModalOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                    </div>
-                    <form onSubmit={handleCreateTransaction} className="space-y-3 text-xs">
-                      <div>
-                        <label className="block font-semibold mb-1">Tipe Transaksi</label>
-                        <select value={trxData.type} onChange={e => setTrxData({ ...trxData, type: e.target.value })} className="w-full p-2 border rounded font-bold">
-                          <option value="IN">BARANG MASUK (IN)</option>
-                          <option value="OUT">BARANG KELUAR (OUT)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block font-semibold mb-1">Pilih Produk</label>
-                        <select value={trxData.productId} onChange={e => setTrxData({ ...trxData, productId: e.target.value })} required className="w-full p-2 border rounded">
-                          <option value="">-- Pilih Barang --</option>
-                          {products.map(p => <option key={p.id} value={p.id}>{p.name} (Stok: {p.stock} {p.unit})</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block font-semibold mb-1">Jumlah Volume ({products.find(p => p.id === trxData.productId)?.unit || 'Satuan'})</label>
-                        <input type="number" min="1" required value={trxData.qty} onChange={e => setTrxData({ ...trxData, qty: e.target.value })} className="w-full p-2 border rounded font-bold" />
-                      </div>
-                      <div>
-                        <label className="block font-semibold mb-1">Keterangan</label>
-                        <input type="text" placeholder="mis: Restock Supplier / Penjualan" value={trxData.notes} onChange={e => setTrxData({ ...trxData, notes: e.target.value })} className="w-full p-2 border rounded" />
-                      </div>
-                      <div className="flex justify-end gap-2 pt-2 border-t">
-                        <button type="button" onClick={() => setIsTrxModalOpen(false)} className="px-3 py-1.5 border rounded">Batal</button>
-                        <button type="submit" className="px-4 py-1.5 bg-slate-900 text-amber-400 font-bold rounded">Simpan Transaksi</button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          );
+            );
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
 </html>
